@@ -1,0 +1,372 @@
+// FamTree - Production-ready family tree application
+// https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ─────────────────────────────────────────────────────────────────
+
+enum TreeRole {
+  OWNER
+  EDITOR
+  CONTRIBUTOR
+  VIEWER
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  EXPIRED
+  REVOKED
+}
+
+enum RelationshipType {
+  PARENT_CHILD
+  PARTNER
+  SIBLING
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  NON_BINARY
+  OTHER
+  UNKNOWN
+}
+
+enum TreeLinkStatus {
+  PROPOSED
+  ACCEPTED
+  DECLINED
+  WITHDRAWN
+}
+
+enum ExportFormat {
+  PDF
+  PNG
+  JSON
+}
+
+enum ExportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum ActivityAction {
+  TREE_CREATED
+  TREE_UPDATED
+  TREE_DELETED
+  TREE_RESTORED
+  TREE_BRANCHED
+  PERSON_CREATED
+  PERSON_UPDATED
+  PERSON_DELETED
+  PERSON_RESTORED
+  RELATIONSHIP_CREATED
+  RELATIONSHIP_UPDATED
+  RELATIONSHIP_DELETED
+  RELATIONSHIP_RESTORED
+  MEMBER_INVITED
+  MEMBER_JOINED
+  MEMBER_REMOVED
+  MEMBER_ROLE_CHANGED
+  TREE_LINK_PROPOSED
+  TREE_LINK_ACCEPTED
+  TREE_LINK_DECLINED
+  EXPORT_REQUESTED
+  EXPORT_COMPLETED
+  PERMISSION_CHANGED
+  OWNERSHIP_TRANSFERRED
+}
+
+// ─── Auth Models ────────────────────────────────────────────────────────────
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  accounts            Account[]
+  sessions            Session[]
+  treeMemberships     TreeMembership[]
+  invitationsSent     Invitation[]     @relation("InvitationSender")
+  invitationsReceived Invitation[]     @relation("InvitationReceiverId")
+  activityLogs        ActivityLog[]
+  exportJobs          ExportJob[]
+
+  @@index([email])
+  @@index([deletedAt])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ─── Tree Models ─────────────────────────────────────────────────────────────
+
+model FamilyTree {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  isPrivate   Boolean   @default(true)
+  version     Int       @default(1)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  parentTreeId String?
+  parentTree   FamilyTree?  @relation("TreeBranches", fields: [parentTreeId], references: [id])
+  branches     FamilyTree[] @relation("TreeBranches")
+  branchedAt   DateTime?
+
+  members       TreeMembership[]
+  people        Person[]
+  relationships Relationship[]
+  invitations   Invitation[]
+  activityLogs  ActivityLog[]
+  exportJobs    ExportJob[]
+
+  proposedLinksAsSource TreeLink[] @relation("TreeLinkSource")
+  proposedLinksAsTarget TreeLink[] @relation("TreeLinkTarget")
+
+  @@index([deletedAt])
+  @@index([parentTreeId])
+}
+
+model TreeMembership {
+  id        String   @id @default(cuid())
+  treeId    String
+  userId    String
+  role      TreeRole
+  joinedAt  DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tree FamilyTree @relation(fields: [treeId], references: [id], onDelete: Cascade)
+  user User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([treeId, userId])
+  @@index([treeId])
+  @@index([userId])
+  @@index([role])
+}
+
+model Person {
+  id      String @id @default(cuid())
+  treeId  String
+  version Int    @default(1)
+
+  firstName   String
+  lastName    String?
+  maidenName  String?
+  aliases     String[]
+
+  gender               Gender  @default(UNKNOWN)
+  birthDate            String?
+  birthDateApproximate Boolean @default(false)
+  birthPlace           String?
+  deathDate            String?
+  deathDateApproximate Boolean @default(false)
+  deathPlace           String?
+  isLiving             Boolean @default(true)
+
+  isPrivate   Boolean @default(false)
+  hideDetails Boolean @default(false)
+
+  profileImageUrl String?
+  notes           String? @db.Text
+  sourceRefs      String[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  tree FamilyTree @relation(fields: [treeId], references: [id], onDelete: Cascade)
+
+  relationshipsAsSubject Relationship[] @relation("RelationshipSubject")
+  relationshipsAsObject  Relationship[] @relation("RelationshipObject")
+
+  treeLinkPeopleSource TreeLinkPerson[] @relation("TreeLinkPersonSource")
+  treeLinkPeopleTarget TreeLinkPerson[] @relation("TreeLinkPersonTarget")
+
+  @@index([treeId])
+  @@index([treeId, deletedAt])
+  @@index([lastName])
+}
+
+model Relationship {
+  id      String @id @default(cuid())
+  treeId  String
+  version Int    @default(1)
+
+  subjectId String
+  objectId  String
+
+  type        RelationshipType
+  subtype     String?
+  isUncertain Boolean          @default(false)
+  notes       String?
+
+  marriageDate            String?
+  marriageDateApproximate Boolean @default(false)
+  marriagePlace           String?
+  endDate                 String?
+  endDateApproximate      Boolean @default(false)
+  endPlace                String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  tree    FamilyTree @relation(fields: [treeId], references: [id], onDelete: Cascade)
+  subject Person     @relation("RelationshipSubject", fields: [subjectId], references: [id], onDelete: Cascade)
+  object  Person     @relation("RelationshipObject", fields: [objectId], references: [id], onDelete: Cascade)
+
+  @@index([treeId])
+  @@index([subjectId])
+  @@index([objectId])
+  @@index([treeId, deletedAt])
+}
+
+model Invitation {
+  id        String           @id @default(cuid())
+  treeId    String
+  email     String
+  role      TreeRole
+  token     String           @unique @default(cuid())
+  status    InvitationStatus @default(PENDING)
+  expiresAt DateTime
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  senderId   String
+  receiverId String?
+
+  tree     FamilyTree @relation(fields: [treeId], references: [id], onDelete: Cascade)
+  sender   User       @relation("InvitationSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver User?      @relation("InvitationReceiverId", fields: [receiverId], references: [id])
+
+  @@index([email])
+  @@index([treeId])
+  @@index([token])
+  @@index([status])
+}
+
+model TreeLink {
+  id           String         @id @default(cuid())
+  sourceTreeId String
+  targetTreeId String
+  status       TreeLinkStatus @default(PROPOSED)
+  message      String?
+  proposedById String
+  resolvedAt   DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  sourceTree FamilyTree @relation("TreeLinkSource", fields: [sourceTreeId], references: [id], onDelete: Cascade)
+  targetTree FamilyTree @relation("TreeLinkTarget", fields: [targetTreeId], references: [id], onDelete: Cascade)
+
+  linkedPeople TreeLinkPerson[]
+
+  @@index([sourceTreeId])
+  @@index([targetTreeId])
+  @@index([status])
+}
+
+model TreeLinkPerson {
+  id             String @id @default(cuid())
+  treeLinkId     String
+  sourcePersonId String
+  targetPersonId String
+
+  treeLink     TreeLink @relation(fields: [treeLinkId], references: [id], onDelete: Cascade)
+  sourcePerson Person   @relation("TreeLinkPersonSource", fields: [sourcePersonId], references: [id], onDelete: Cascade)
+  targetPerson Person   @relation("TreeLinkPersonTarget", fields: [targetPersonId], references: [id], onDelete: Cascade)
+
+  @@unique([treeLinkId, sourcePersonId, targetPersonId])
+}
+
+model ActivityLog {
+  id         String         @id @default(cuid())
+  treeId     String
+  userId     String
+  action     ActivityAction
+  entityType String
+  entityId   String
+  metadata   Json?
+  createdAt  DateTime       @default(now())
+
+  tree FamilyTree @relation(fields: [treeId], references: [id], onDelete: Cascade)
+  user User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([treeId])
+  @@index([treeId, createdAt(sort: Desc)])
+  @@index([userId])
+  @@index([entityType, entityId])
+}
+
+model ExportJob {
+  id        String       @id @default(cuid())
+  treeId    String
+  userId    String
+  format    ExportFormat
+  status    ExportStatus @default(PENDING)
+  fileUrl   String?
+  errorMsg  String?
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  tree FamilyTree @relation(fields: [treeId], references: [id], onDelete: Cascade)
+  user User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([treeId])
+  @@index([userId])
+  @@index([status])
+}
