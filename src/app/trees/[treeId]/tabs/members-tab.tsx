@@ -36,10 +36,8 @@ export function MembersTab({
   treeId,
   members,
   currentUserId,
-  // role is available for future use (e.g., showing owner controls)
-  role: _role,
   canManage,
-}: MembersTabProps) {
+}: Omit<MembersTabProps, "role">) {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"EDITOR" | "CONTRIBUTOR" | "VIEWER">("VIEWER");
   const [sending, setSending] = useState(false);

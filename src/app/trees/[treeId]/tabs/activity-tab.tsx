@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { formatDate } from "@/lib/utils";
+import { useCallback, useEffect, useState } from "react";
 
 type ActivityAction = string;
 
@@ -20,7 +19,7 @@ interface ActivityEntry {
   };
 }
 
-const ACTION_LABELS: Partial<Record<ActivityAction, string>> = {
+const ACTION_LABELS: Record<string, string> = {
   TREE_CREATED: "created this tree",
   TREE_UPDATED: "updated tree settings",
   TREE_BRANCHED: "branched the tree",
@@ -44,7 +43,7 @@ export function ActivityTab({ treeId }: { treeId: string }) {
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
 
-  const fetchLogs = async (cursor?: string) => {
+  const fetchLogs = useCallback(async (cursor?: string) => {
     try {
       const url = new URL(`/api/trees/${treeId}/activity`, window.location.origin);
       if (cursor) url.searchParams.set("cursor", cursor);
@@ -62,11 +61,11 @@ export function ActivityTab({ treeId }: { treeId: string }) {
       setLoading(false);
       setLoadingMore(false);
     }
-  };
+  }, [treeId]);
 
   useEffect(() => {
     fetchLogs();
-  }, [treeId]);
+  }, [fetchLogs]);
 
   if (loading) {
     return <p className="py-8 text-center text-muted-foreground">Loading activity...</p>;

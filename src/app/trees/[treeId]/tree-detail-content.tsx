@@ -211,7 +211,6 @@ export function TreeDetailContent({
             treeId={tree.id}
             members={tree.members}
             currentUserId={userId}
-            role={role}
             canManage={canManage}
           />
         )}

@@ -95,13 +95,5 @@ export interface TreeGraphData {
 
 // ─── Role permissions ─────────────────────────────────────────────────────────
 
-export const ROLE_PERMISSIONS: Record<TreeRole, string[]> = {
-  OWNER: ["read", "write", "delete", "invite", "manage_roles", "export", "branch", "delete_tree"],
-  EDITOR: ["read", "write", "delete", "export"],
-  CONTRIBUTOR: ["read", "write", "export"],
-  VIEWER: ["read", "export"],
-};
-
-export function canPerform(role: TreeRole, action: string): boolean {
-  return ROLE_PERMISSIONS[role]?.includes(action) ?? false;
-}
+// Re-export canonical permission helpers from types.ts to avoid duplication
+export { ROLE_PERMISSIONS, canPerform, hasMinimumRole, type PermissionAction } from "@/types";
